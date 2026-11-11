@@ -31,14 +31,21 @@ def fetch(cfg, user, pw):
     tz = ZoneInfo(cfg["timezone"])
     start = datetime.combine(date.today(), datetime.min.time(), tz)
     end = start + timedelta(days=cfg["calendar_days"])
-    events = []
     with caldav.DAVClient(url=URL, username=user, password=pw) as client:
-        for c in client.principal().calendars():
-            try:
-                found = c.search(start=start, end=end, event=True, expand=False)
-            except Exception:
-                continue  # e.g. Reminders lists that reject event queries
-            for obj in found:
-                for comp in recurring_ical_events.of(obj.icalendar_instance).between(start, end):
-                    events.append(normalise(comp, tz, c.name or ""))
+        return collect(client.principal().calendars(), start, end, tz)
+
+
+def collect(calendars, start, end, tz):
+    events, failures, last = [], 0, None
+    for c in calendars:
+        try:
+            found = c.search(start=start, end=end, event=True, expand=False)
+        except Exception as e:  # e.g. Reminders lists that reject event queries
+            failures, last = failures + 1, e
+            continue
+        for obj in found:
+            for comp in recurring_ical_events.of(obj.icalendar_instance).between(start, end):
+                events.append(normalise(comp, tz, c.name or ""))
+    if calendars and failures == len(calendars):
+        raise RuntimeError(f"every calendar failed: {last}")  # show "Couldn't load", not an empty day
     return sorted(events, key=lambda e: (e["start"][:10], not e["all_day"], e["start"]))

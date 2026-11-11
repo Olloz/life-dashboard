@@ -62,6 +62,8 @@ def free_gaps(events, day, tz):
     )
     gaps, cursor = [], lo
     for s, e in busy:
+        if s >= e:
+            continue  # entirely outside 08:00-22:00
         if s > cursor and (s - cursor) >= timedelta(minutes=60):
             gaps.append((cursor, s))
         cursor = max(cursor, e)

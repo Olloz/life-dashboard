@@ -27,6 +27,7 @@ def allday(day, title, days=1, cal="Home"):
 
 events = [
     allday(0, "Reading week starts"),
+    {**ev(-1, "Hackathon", "18:00", "18:00", cal="Personal"), "end": ev(0, "x", "08:30", "08:30")["end"]},
     ev(0, "Machine Learning lecture", "09:00", "11:00", loc="Bush House 2.01"),
     ev(0, "Group project meeting", "13:00", "14:00", loc="Library café"),
     ev(0, "Five-a-side", "18:30", "19:30", cal="Personal", loc="Elephant & Castle"),

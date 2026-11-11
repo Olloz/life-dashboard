@@ -32,3 +32,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python scripts/sample_data.py      # sample data, passphrase "test"
 python3 -m http.server 8765 -d site          # open http://localhost:8765
 ```
+
+## If the daily update stops
+
+GitHub pauses scheduled workflows in a public repo after 60 days with no commits, and emails you
+first. Re-enable it from the repo's Actions tab, or push any small change.

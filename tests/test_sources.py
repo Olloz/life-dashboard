@@ -117,3 +117,23 @@ def test_parse_message_html_only_preview(CFG):
 def test_parse_message_drops_newsletter(CFG):
     raw = b"From: noreply@x.com\r\nList-Unsubscribe: <x>\r\nSubject: Sale\r\n\r\nhi"
     assert mail.parse_message(raw, b"\\Seen", CFG) is None
+
+
+class _FailingCal:
+    name = "Broken"
+    def search(self, **kw):
+        raise RuntimeError("REPORT failed")
+
+
+def test_calendar_collect_raises_when_every_calendar_fails():
+    import pytest
+    with pytest.raises(RuntimeError):
+        cal.collect([_FailingCal(), _FailingCal()], datetime(2026, 11, 11, tzinfo=LONDON), datetime(2026, 11, 19, tzinfo=LONDON), LONDON)
+
+
+def test_calendar_collect_tolerates_some_failures():
+    class Empty:
+        name = "Home"
+        def search(self, **kw):
+            return []
+    assert cal.collect([_FailingCal(), Empty()], datetime(2026, 11, 11, tzinfo=LONDON), datetime(2026, 11, 19, tzinfo=LONDON), LONDON) == []

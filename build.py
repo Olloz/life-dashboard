@@ -15,8 +15,8 @@ def _run(fn, secret):
     try:
         return fn()
     except Exception as e:
-        msg = f"{type(e).__name__}: {e}"[:200]
-        return {"error": msg.replace(secret, "***") if secret else msg}
+        msg = f"{type(e).__name__}: {e}"
+        return {"error": (msg.replace(secret, "***") if secret else msg)[:200]}  # redact before truncating
 
 
 def _ok(x):
@@ -31,7 +31,8 @@ def assemble(cfg, sources, now, secret=""):
     data["generated"] = now.isoformat()
     data["deadlines"] = rules.find_deadlines(events, emails, today, cfg)
     data["wear"] = rules.what_to_wear(data["weather"]["hourly"], today.isoformat()) if _ok(data["weather"]) else None
-    todays = [e for e in events if e["start"][:10] == today.isoformat()]
+    day = today.isoformat()
+    todays = [e for e in events if not e["all_day"] and e["start"][:10] <= day <= e["end"][:10]]
     data["gaps"] = rules.free_gaps(todays, today.isoformat(), cfg["timezone"]) if _ok(data["events"]) else []
     return data
 

@@ -73,3 +73,8 @@ def test_find_deadlines_from_email_date(CFG):
 def test_find_deadlines_email_date_rolls_year(CFG):
     em = [{"subject": "Exam on 5 Jan", "preview": "", "score": 7, "from": "t"}]
     assert find_deadlines([], em, date(2026, 12, 20), CFG)[0]["due"] == "2027-01-05"
+
+
+def test_free_gaps_event_after_window_does_not_extend_gap():
+    gaps = free_gaps([timed("23:00", "23:30")], "2026-11-11", "Europe/London")
+    assert [(g["start"][11:16], g["end"][11:16]) for g in gaps] == [("08:00", "22:00")]

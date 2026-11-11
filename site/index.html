@@ -217,6 +217,9 @@ const longDate = d => fmt({ weekday: "long", day: "numeric", month: "long" }).fo
 const shortDay = key => fmt({ weekday: "short", day: "numeric" }).format(new Date(key + "T12:00:00Z"));
 const addDays = (key, n) => { const d = new Date(key + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const ago = iso => { const h = Math.round((Date.now() - new Date(iso)) / 36e5); return h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`; };
+// minutes since midnight for an event on `key`, clamped so multi-day events fill the day
+const startOn = (e, key) => dayKey(new Date(e.start)) < key ? 0 : mins(e.start);
+const endOn = (e, key) => dayKey(new Date(e.end)) > key ? 1440 : mins(e.end);
 const DEADLINE = /deadline|due|submit|submission|hand.?in|exam/i;
 
 function onDay(e, key) {
@@ -243,12 +246,13 @@ function render(data) {
   const gen = new Date(D.generated), stale = now - gen > 26 * 36e5;
   const up = $("#updated");
   up.textContent = stale ? `Out of date: last updated ${fmt({ weekday: "short", hour: "2-digit", minute: "2-digit" }).format(gen)}`
-                         : `Updated ${hm(D.generated)}`;
+                         : dayKey(gen) === today ? `Updated ${hm(D.generated)}` : `Updated ${fmt({ weekday: "short", hour: "2-digit", minute: "2-digit" }).format(gen)}`;
   up.parentElement.classList.toggle("stale", stale);
   renderToday(today, now); renderWeek(today); renderInbox(); renderFootball();
 }
 
 function renderToday(today, now) {
+  const builtToday = dayKey(new Date(D.generated)) === today;
   const w = failed(D.weather) ? null : D.weather;
   const hours = w ? w.hourly.filter(h => h.time.startsWith(today)) : [];
   const daily = w?.daily.find(d => d.date === today);
@@ -257,7 +261,7 @@ function renderToday(today, now) {
   if (!w) hero = `<h1>Check the sky before you go</h1>${errBox("the weather")}`;
   else {
     const c = wx(curHour?.code);
-    hero = `<h1>${esc(D.wear?.text || "No forecast for today")}</h1>
+    hero = `<h1>${esc((builtToday && D.wear?.text) || "Today's forecast arrives with the morning update")}</h1>
       <p class="wx">${c.icon} <strong>${Math.round(curHour?.temp)}°</strong> now, feels ${Math.round(curHour?.feels)}°. ${esc(c.label)}.
       ${daily ? `High ${Math.round(daily.max)}°, low ${Math.round(daily.min)}°. Sunset ${daily.sunset.slice(11)}.` : ""}</p>`;
   }
@@ -268,7 +272,7 @@ function renderToday(today, now) {
   else {
     const evs = D.events.filter(e => onDay(e, today));
     const allDay = evs.filter(e => e.all_day), timed = evs.filter(e => !e.all_day);
-    const startH = Math.min(7, ...timed.map(e => Math.floor(mins(e.start) / 60))), endH = Math.max(23, ...timed.map(e => Math.ceil(mins(e.end) / 60)));
+    const startH = Math.min(7, ...timed.map(e => Math.floor(startOn(e, today) / 60))), endH = Math.max(23, ...timed.map(e => Math.ceil(endOn(e, today) / 60)));
     const PX = 52, top = m => (m - startH * 60) / 60 * PX, H = (endH - startH) * PX;
     let marks = "", grid = "", rain = "", lit = "";
     for (let h = startH; h <= endH; h++) {
@@ -286,11 +290,11 @@ function renderToday(today, now) {
     sorted.forEach(e => { let i = lanes.findIndex(end => end <= e.start); if (i < 0) { i = lanes.length; lanes.push(""); } lanes[i] = e.end; e._lane = i; });
     const n = Math.max(1, lanes.length);
     const blocks = sorted.map(e => {
-      const s = mins(e.start), dur = Math.max(30, mins(e.end) - s);
+      const s = startOn(e, today), dur = Math.max(30, endOn(e, today) - s);
       return `<div class="ev ${DEADLINE.test(e.title) ? "deadline" : ""}" style="top:${top(s) + 1}px;height:${dur / 60 * PX - 2}px;left:calc(${e._lane / n * 100}% + 12px);width:calc(${100 / n}% - 18px)">
         <b>${esc(e.title)}</b><span class="muted">${hm(e.start)}${e.end !== e.start ? "–" + hm(e.end) : ""}${e.location ? ", " + esc(e.location) : ""}</span></div>`;
     }).join("");
-    const gaps = (D.gaps || []).map(g => { const s = mins(g.start); return g.minutes >= 90 ?
+    const gaps = (D.gaps || []).filter(g => dayKey(new Date(g.start)) === today).map(g => { const s = mins(g.start); return g.minutes >= 90 ?
       `<div class="gap" style="top:${top(s) + 6}px;height:${g.minutes / 60 * PX - 12}px">Free ${g.minutes >= 120 ? Math.floor(g.minutes / 60) + "h" + (g.minutes % 60 ? " " + g.minutes % 60 + "m" : "") : g.minutes + " min"}</div>` : ""; }).join("");
     const nm = mins(now.toISOString()), nowLine = nm >= startH * 60 && nm <= endH * 60 ? `<div class="now" style="top:${top(nm)}px" aria-hidden="true"></div>` : "";
     tl = `${allDay.length ? `<div class="allday">${allDay.map(e => `<span class="chip">${esc(e.title)}</span>`).join("")}</div>` : ""}
@@ -300,7 +304,8 @@ function renderToday(today, now) {
   }
 
   // side panel
-  const soon = (D.deadlines || []).filter(d => d.days_left <= 7);
+  const soon = (D.deadlines || []).map(d => ({ ...d, days_left: Math.round((new Date(d.due + "T12:00:00Z") - new Date(today + "T12:00:00Z")) / 864e5) }))
+    .filter(d => d.days_left >= 0 && d.days_left <= 7);
   const dl = soon.length ? `<ul class="dl">${soon.map(d => `<li><span class="days">${d.days_left === 0 ? "Today" : d.days_left}${d.days_left ? `<small>${d.days_left === 1 ? "day" : "days"}</small>` : ""}</span>
       <span><b>${esc(d.title)}</b><br><span class="muted small">${shortDay(d.due)}${d.source === "email" ? ", from an email" : ""}</span></span></li>`).join("")}</ul>`
     : `<p class="empty">Nothing due in the next 7 days.</p>`;
@@ -388,17 +393,24 @@ async function unlock(pass, remember, auto) {
     err.textContent = "The dashboard data hasn't been built yet. Run the daily update in GitHub, then reload.";
     btn.disabled = false; btn.textContent = "Unlock"; return;
   }
+  let data;
   try {
-    const data = await decrypt(blob, pass);
-    if (remember) store.set(pass);
-    render(data);
-    $("#lock").hidden = true; $("#app").hidden = false;
-    let saved; try { saved = sessionStorage.getItem("ld-tab"); } catch {}
-    if (saved && document.getElementById(saved)) select(document.getElementById(saved));
+    data = await decrypt(blob, pass);
   } catch {
     if (auto) store.clear();
     err.textContent = auto ? "The saved passphrase no longer works. Enter the current one." : "Wrong passphrase. Check it and try again.";
     $("#pass").select();
+    btn.disabled = false; btn.textContent = "Unlock"; return;
+  }
+  if (remember) store.set(pass);
+  try {
+    render(data);
+    $("#lock").hidden = true; $("#app").hidden = false;
+    let saved; try { saved = sessionStorage.getItem("ld-tab"); } catch {}
+    if (saved && document.getElementById(saved)) select(document.getElementById(saved));
+  } catch (e) {
+    console.error(e);
+    err.textContent = "The dashboard data couldn't be displayed. It will be rebuilt at the next daily update.";
   }
   btn.disabled = false; btn.textContent = "Unlock";
 }

@@ -47,3 +47,18 @@ def test_main_exit_code_when_both_icloud_fail(CFG, tmp_path, monkeypatch):
 def test_main_refuses_without_passphrase(tmp_path, monkeypatch):
     monkeypatch.delenv("DASHBOARD_PASSPHRASE", raising=False)
     assert build.main(tmp_path / "data.enc") == 2 and not (tmp_path / "data.enc").exists()
+
+
+def test_gaps_include_multi_day_timed_event_overlapping_today(CFG):
+    span = [{"title": "Conference", "start": "2026-11-10T09:00:00+00:00", "end": "2026-11-11T17:00:00+00:00",
+             "all_day": False, "calendar": "Uni", "location": ""}]
+    data = build.assemble(CFG, {"events": lambda: span, "emails": boom, "weather": boom, "football": boom}, NOW)
+    assert [(g["start"][11:16], g["end"][11:16]) for g in data["gaps"]] == [("17:00", "22:00")]
+
+
+def test_redaction_survives_truncation(CFG):
+    secret = "abcd-efgh-ijkl-mnop"
+    def leak():
+        raise RuntimeError("x" * 180 + secret)
+    data = build.assemble(CFG, {"events": leak, "emails": boom, "weather": boom, "football": boom}, NOW, secret=secret)
+    assert "abcd-e" not in data["events"]["error"]
