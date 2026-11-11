@@ -1,7 +1,7 @@
 """Fetch every source, derive extras, write the encrypted site/data.enc.
 Usage: python build.py [--plain data.json]   (plain copy is for local debugging only)"""
 import json, os, pathlib, sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from dashboard import rules
@@ -30,10 +30,15 @@ def assemble(cfg, sources, now, secret=""):
     emails = data["emails"] if _ok(data["emails"]) else []
     data["generated"] = now.isoformat()
     data["deadlines"] = rules.find_deadlines(events, emails, today, cfg)
-    data["wear"] = rules.what_to_wear(data["weather"]["hourly"], today.isoformat()) if _ok(data["weather"]) else None
-    day = today.isoformat()
-    todays = [e for e in events if not e["all_day"] and e["start"][:10] <= day <= e["end"][:10]]
-    data["gaps"] = rules.free_gaps(todays, today.isoformat(), cfg["timezone"]) if _ok(data["events"]) else []
+    data["week"] = {}
+    for i in range(7):
+        day = (today + timedelta(days=i)).isoformat()
+        on_day = [e for e in events if not e["all_day"] and e["start"][:10] <= day <= e["end"][:10]]
+        data["week"][day] = {
+            "wear": rules.what_to_wear(data["weather"]["hourly"], day) if _ok(data["weather"]) else None,
+            "gaps": rules.free_gaps(on_day, day, cfg["timezone"]) if _ok(data["events"]) else [],
+        }
+    data.update(data["week"][today.isoformat()])  # wear + gaps for today
     return data
 
 

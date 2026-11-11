@@ -62,3 +62,16 @@ def test_redaction_survives_truncation(CFG):
         raise RuntimeError("x" * 180 + secret)
     data = build.assemble(CFG, {"events": leak, "emails": boom, "weather": boom, "football": boom}, NOW, secret=secret)
     assert "abcd-e" not in data["events"]["error"]
+
+
+def test_week_has_wear_and_gaps_per_day(CFG):
+    tomorrow = [{"title": "Lab", "start": "2026-11-12T10:00:00+00:00", "end": "2026-11-12T12:00:00+00:00",
+                 "all_day": False, "calendar": "Uni", "location": ""}]
+    hourly = [{"time": f"2026-11-{d}T%02d:00" % i, "temp": 8, "feels": f, "rain": 0, "wind": 5, "code": 3}
+              for d, f in (("11", 6), ("12", 20)) for i in range(24)]
+    data = build.assemble(CFG, {"events": lambda: tomorrow, "emails": boom,
+                                "weather": lambda: {"hourly": hourly, "daily": []}, "football": boom}, NOW)
+    assert list(data["week"]) == [f"2026-11-{d}" for d in range(11, 18)]
+    assert data["week"]["2026-11-12"]["wear"] == {"text": "T-shirt weather"}
+    assert data["week"]["2026-11-13"]["wear"] is None
+    assert [(g["start"][11:16], g["end"][11:16]) for g in data["week"]["2026-11-12"]["gaps"]] == [("08:00", "10:00"), ("12:00", "22:00")]
