@@ -53,3 +53,67 @@ def test_parse_table_marks_team_sorted():
     assert [r["team"] for r in t] == ["Arsenal", "Chelsea"]
     assert t[1] == {"pos": 2, "team": "Chelsea", "played": 10, "gd": 4, "points": 20, "is_team": True}
     assert t[0]["is_team"] is False
+
+
+# --- calendar + mail ---
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+from icalendar import Event
+from dashboard.sources import calendar as cal, mail
+
+LONDON = ZoneInfo("Europe/London")
+
+
+def _vevent(title, start, end, **extra):
+    e = Event()
+    if title:
+        e.add("summary", title)
+    e.add("dtstart", start)
+    if end is not None:
+        e.add("dtend", end)
+    for k, v in extra.items():
+        e.add(k, v)
+    return e
+
+
+def test_normalise_utc_event_to_london():
+    ev = _vevent("Lecture", datetime(2026, 7, 15, 9, tzinfo=ZoneInfo("UTC")), datetime(2026, 7, 15, 10, tzinfo=ZoneInfo("UTC")),
+                 location="Bush House")
+    n = cal.normalise(ev, LONDON, "Uni")
+    assert n == {"title": "Lecture", "start": "2026-07-15T10:00:00+01:00", "end": "2026-07-15T11:00:00+01:00",
+                 "all_day": False, "calendar": "Uni", "location": "Bush House"}
+
+
+def test_normalise_floating_time_is_london():
+    n = cal.normalise(_vevent("Gym", datetime(2026, 11, 11, 18), datetime(2026, 11, 11, 19)), LONDON, "Home")
+    assert n["start"] == "2026-11-11T18:00:00+00:00"
+
+
+def test_normalise_all_day_multi_day():
+    n = cal.normalise(_vevent("Trip", date(2026, 11, 11), date(2026, 11, 14)), LONDON, "Home")
+    assert n["all_day"] and n["start"] == "2026-11-11" and n["end"] == "2026-11-14"
+
+
+def test_normalise_missing_end_and_title():
+    n = cal.normalise(_vevent(None, datetime(2026, 11, 11, 9, tzinfo=LONDON), None), LONDON, "Home")
+    assert n["end"] == n["start"] and n["title"] == "(no title)"
+
+
+def test_parse_message_decodes_utf8_headers_and_scores(CFG):
+    raw = (b"From: =?UTF-8?B?Sm9zw6k=?= <j@kcl.ac.uk>\r\nSubject: =?UTF-8?Q?Exam_r=C3=A9sum=C3=A9?=\r\n"
+           b"Date: Wed, 11 Nov 2026 09:00:00 +0000\r\n\r\nPlease   read\r\n this.")
+    m = mail.parse_message(raw, b"", CFG)
+    assert m["from"].startswith("José") and "résumé" in m["subject"] and m["unread"]
+    assert m["preview"] == "Please read this." and m["date"] == "2026-11-11T09:00:00+00:00"
+    assert m["score"] >= 3 and "uni sender" in m["reasons"]
+
+
+def test_parse_message_html_only_preview(CFG):
+    raw = (b"From: a@kcl.ac.uk\r\nSubject: Hi\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"
+           b"<html><style>p{}</style><p>Your <b>deadline</b> moved</p></html>")
+    assert mail.parse_message(raw, b"\\Seen", CFG)["preview"] == "Your deadline moved"
+
+
+def test_parse_message_drops_newsletter(CFG):
+    raw = b"From: noreply@x.com\r\nList-Unsubscribe: <x>\r\nSubject: Sale\r\n\r\nhi"
+    assert mail.parse_message(raw, b"\\Seen", CFG) is None
