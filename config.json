@@ -1,0 +1,12 @@
+{
+  "timezone": "Europe/London",
+  "location": {"name": "London", "lat": 51.5072, "lon": -0.1276},
+  "football": {"league": "eng.1", "team_id": "363", "team_name": "Chelsea"},
+  "mail": {"days": 3, "min_score": 3, "max": 15,
+           "uni_domains": [".ac.uk"],
+           "keywords": ["deadline", "due", "urgent", "action required", "reminder", "payment",
+                        "overdue", "interview", "offer", "submission", "exam", "invoice"],
+           "noise": "noreply|no-reply|newsletter|marketing"},
+  "deadline_pattern": "deadline|due|submit|submission|hand.?in|exam",
+  "calendar_days": 8
+}
