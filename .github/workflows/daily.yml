@@ -1,0 +1,48 @@
+name: Daily dashboard
+
+on:
+  schedule:
+    - cron: "30 5 * * *"   # 05:30 UTC = 05:30 GMT / 06:30 BST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+      - name: Build encrypted data
+        id: build
+        env:
+          ICLOUD_EMAIL: ${{ secrets.ICLOUD_EMAIL }}
+          ICLOUD_APP_PASSWORD: ${{ secrets.ICLOUD_APP_PASSWORD }}
+          DASHBOARD_PASSPHRASE: ${{ secrets.DASHBOARD_PASSPHRASE }}
+        # deploy whatever loaded, then fail the run below so GitHub emails you
+        run: python build.py || echo "failed=1" >> "$GITHUB_OUTPUT"
+      - name: Check data was built
+        run: test -f site/data.enc
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - name: Fail if iCloud could not be reached
+        if: steps.build.outputs.failed == '1'
+        run: echo "::error::Calendar and email both failed. Check the 'Build encrypted data' step log and your secrets." && exit 1
