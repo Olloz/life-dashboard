@@ -5,3 +5,4 @@ data.json
 .env
 .superpowers/
 .pytest_cache/
+site/data.enc
